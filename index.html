@@ -453,8 +453,37 @@
   </div>
 </section>
 
-<!-- 13. 기대효과 & 로드맵 -->
+<!-- 13. 실측 검증 -->
 <section class="slide" data-index="13">
+  <div class="content" style="width:min(1240px,94vw);">
+    <div class="eyebrow" data-anim>실측 검증</div>
+    <div class="h1" data-anim>같은 밤, 같은 습도 — 실제 데이터로 비교하다</div>
+    <div class="compare-grid" data-anim>
+      <div class="mini-canvas-wrap">
+        <canvas id="valid-real-canvas"></canvas>
+        <div class="mini-label" style="color:var(--danger);">실측 — 에어컨 자체 데드밴드 제어 (2026-07-25 취침, SHT31)</div>
+        <div class="mini-counter" id="valid-real-readout" style="color:var(--danger);">재생 준비 중…</div>
+      </div>
+      <div class="mini-canvas-wrap">
+        <canvas id="valid-sim-canvas"></canvas>
+        <div class="mini-label" style="color:var(--cool);">시뮬레이션 — 동일 밤 실측 습도 재사용 · EcoBreeze 넓은 쾌적대</div>
+        <div class="mini-counter" id="valid-sim-readout" style="color:var(--cool);">재생 준비 중…</div>
+      </div>
+    </div>
+    <div class="cap" data-anim>
+      두 그래프 모두 <b>2026년 7월 25일 취침 시간(약 11시간)</b>의 같은 출발 온도(29.1°C)에서 시작합니다. 왼쪽은
+      SHT31 센서로 그대로 실측한 에어컨 자체 데드밴드 제어 결과, 오른쪽은 같은 밤의 실측 습도를 그대로 반영해
+      EcoBreeze 넓은 쾌적대 로직으로 계산한 시뮬레이션 결과입니다(음영은 그 시점의 쾌적대 [lo, hi] — 취침
+      초반엔 더 낮게 시작해 시간이 지나며 서서히 올라갑니다). 좁은 데드밴드는 <b>약 52회</b> 재가동한
+      반면, 같은 조건에서 EcoBreeze는 <b>11회</b>로 재가동 횟수 자체가 크게 줄어듭니다.
+      <mark class="kw">앞 슬라이드의 절감률 추정치가 지어낸 숫자가 아니라 이 실측 기반 시뮬레이션에서
+      나온다</mark>는 근거입니다.
+    </div>
+  </div>
+</section>
+
+<!-- 14. 기대효과 & 로드맵 -->
+<section class="slide" data-index="14">
   <canvas id="effects-canvas" class="bgcanvas"></canvas>
   <div class="content" style="width:min(1240px,94vw);">
     <div class="eyebrow" data-anim>8. 기대 효과 & 향후 확장 로드맵</div>
@@ -483,8 +512,8 @@
   </div>
 </section>
 
-<!-- 14. CLOSING -->
-<section class="slide" data-index="14">
+<!-- 15. CLOSING -->
+<section class="slide" data-index="15">
   <canvas id="closing-canvas" class="bgcanvas"></canvas>
   <div class="fire-flash flash-cool" id="flash-closing"></div>
   <div class="content" style="align-items:flex-start;">
@@ -503,8 +532,8 @@
   <div class="caption-bar">2026 경상국립대 AI 에너지 스마트홈 메이커톤 · EcoBreeze 개발팀 · 2026.7</div>
 </section>
 
-<!-- 15. LIVE DEMO — 휴대폰 카메라 연결 -->
-<section class="slide" data-index="15">
+<!-- 16. LIVE DEMO — 휴대폰 카메라 연결 -->
+<section class="slide" data-index="16">
   <div class="content" style="width:min(1240px,94vw);">
     <div class="eyebrow" data-anim>Live Demo</div>
     <div class="h1" data-anim>휴대폰 카메라를 발표 화면에 연결하기</div>
@@ -940,7 +969,7 @@ function initWallFlux(canvasId) {
   resize();
 
   const outdoorT = 33.9;
-  let indoorT = 24, timer = 0, last = performance.now();
+  let indoorT = 24, timer = 0, spawnAcc = 0, passAcc = 0, last = performance.now();
   const particles = [];
   const labelIndoor = document.getElementById("wallflux-indoor");
   const labelDelta = document.getElementById("wallflux-delta");
@@ -948,19 +977,45 @@ function initWallFlux(canvasId) {
   // 단면도 시선: 왼쪽=외기, 가운데 두꺼운 밴드=벽(단열재), 오른쪽=실내.
   // 열 입자는 항상 외기(왼쪽 바깥)에서 출발해 벽을 관통해 실내로 침투하며,
   // 벽을 지나는 동안엔 단열재의 저항을 표현하기 위해 속도·불투명도를 낮춘다.
+  // 발생 속도는 무작위 확률이 아니라 ΔT에 비례하는 결정론적 누산기로 계산하고,
+  // 이미 화면에 떠 있는 입자도 "생성 당시" 속도가 아니라 항상 "현재" ΔT로 다시 계산한다 —
+  // 그래야 구간이 막 바뀐 직후 이전 구간의 빠른/느린 입자가 남아 있어서 방향이 헷갈리는 일이 없다.
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (!isActive(canvas)) { requestAnimationFrame(frame); return; }
     timer += dt;
-    if (timer > 4) { timer = 0; indoorT = indoorT < 25 ? 26.4 : 24; }
+    if (timer > 7) { timer = 0; indoorT = indoorT < 25 ? 26.4 : 24; }
     const deltaT = outdoorT - indoorT;
     if (labelIndoor) labelIndoor.textContent = indoorT.toFixed(1) + "°C";
     if (labelDelta) labelDelta.textContent = deltaT.toFixed(1) + "°C";
 
     const wallX0 = w * 0.44, wallX1 = w * 0.56;
+    const curSpeed = 60 + deltaT * 6;              // ΔT 클수록 더 빨리 흘러 들어감
+    const BASE_RADIUS = 2.3, BASE_BRIGHTNESS = 0.55; // 외기·벽 통과 중엔 ΔT와 무관하게 항상 동일
+    const indoorRadius = 2 + (deltaT / 12) * 3;       // 실내로 넘어온 뒤에만 ΔT 클수록 커짐
+    const indoorBrightness = 0.28 + (deltaT / 12) * 0.72; // 실내로 넘어온 뒤에만 ΔT 클수록 밝아짐
 
-    if (Math.random() * 60 < deltaT * 1.1) {
-      particles.push({ x: -4, y: h * 0.18 + Math.random() * h * 0.64, vx: 26 + deltaT * 5 });
+    // 외기에서 벽으로 "도달"하는 입자 수는 ΔT와 무관하게 항상 일정하다(외기 열은 늘 그만큼 있다).
+    // 대신 벽을 실제로 "통과"해 실내까지 들어오는 비율(passProb)이 ΔT가 클수록 높아진다 —
+    // 이렇게 해야 "벽 왼쪽은 항상 비슷한데 오른쪽(실내)으로 넘어오는 양은 ΔT에 따라 달라진다"는
+    // 열전달 법칙(ΔT가 클수록 더 많이 침투)이 그림으로 바로 보인다.
+    const CONST_SPAWN_RATE = 4.0;
+    spawnAcc += CONST_SPAWN_RATE * dt;
+    const passProb = Math.max(0.05, Math.min(0.95, Math.pow(Math.max(0, deltaT - 3) / 9, 2.6)));
+    while (spawnAcc >= 1) {
+      spawnAcc -= 1;
+      // 매번 난수로 통과 여부를 정하면 화면마다 비율이 들쭉날쭉해 보인다.
+      // 통과 확률만큼 누적시켰다가 1을 넘을 때만 통과시키는 결정론적 방식으로
+      // ΔT별 통과 비율이 항상 정확하고 안정적으로 보이게 한다.
+      passAcc += passProb;
+      const willPass = passAcc >= 1;
+      if (willPass) passAcc -= 1;
+      particles.push({
+        x: -4, y: h * 0.18 + Math.random() * h * 0.64,
+        willPass,
+        absorbX: willPass ? Infinity : wallX0 + Math.random() * (wallX1 - wallX0),
+        fade: 1,
+      });
     }
 
     ctx.fillStyle = "rgba(7,11,18,0.3)"; ctx.fillRect(0, 0, w, h);
@@ -990,15 +1045,36 @@ function initWallFlux(canvasId) {
     ctx.fillText("벽(단열)", 0, 4);
     ctx.restore();
 
+    // 열류량 게이지 — 입자 개수 세기에 기대지 않고 현재 ΔT를 막대 길이로 바로 보여준다(지연 없음)
+    // 좌하단 HTML 미니 카운터와 겹치지 않도록 우상단에 배치
+    const gaugeW = Math.min(150, w * 0.32), gaugeX = w - gaugeW - 8, gaugeY = 58, gaugeH = 6;
+    const fluxFrac = Math.max(0, Math.min(1, deltaT / 12));
+    ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(gaugeX, gaugeY, gaugeW, gaugeH);
+    ctx.fillStyle = "rgba(255,176,32,0.9)"; ctx.fillRect(gaugeX, gaugeY, gaugeW * fluxFrac, gaugeH);
+    ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "10px Pretendard";
+    ctx.fillText("열류량(ΔT 비례)", gaugeX, gaugeY - 4);
+
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      const insideWall = p.x >= wallX0 && p.x <= wallX1;
-      p.x += p.vx * (insideWall ? 0.35 : 1) * dt;
+      // 통과하지 못하는 입자는 벽 속 임의 깊이(absorbX, 벽 안쪽에만 있도록 여유를 둠)에 닿으면
+      // 그 자리에 멈춰 서서 서서히 흡수되어 사라진다 — 벽을 못 넘고 실내로 나가지 않는다.
+      if (p.fading) {
+        p.fade -= dt / 0.3;
+        if (p.fade <= 0) { particles.splice(i, 1); continue; }
+      } else {
+        const insideWall = p.x >= wallX0 && p.x <= wallX1;
+        p.x += curSpeed * (insideWall ? 0.35 : 1) * dt;
+        if (!p.willPass && p.x >= p.absorbX) p.fading = true;
+      }
       // 목숨(life)을 시간으로 깎지 않고 화면을 완전히 빠져나갈 때만 제거 —
-      // 그래야 외기→벽→실내까지 실제로 끝까지 이동하는 게 보인다.
+      // 그래야 통과한 입자는 외기→벽→실내까지 실제로 끝까지 이동하는 게 보인다.
       if (p.x > w + 5) { particles.splice(i, 1); continue; }
-      const a = insideWall ? 0.4 : 0.85;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      const insideWallNow = p.x >= wallX0 && p.x <= wallX1;
+      const isIndoor = !p.fading && p.x > wallX1;
+      const brightness = isIndoor ? indoorBrightness : BASE_BRIGHTNESS;
+      const radius = isIndoor ? indoorRadius : BASE_RADIUS;
+      const a = (insideWallNow || p.fading ? 0.4 : isIndoor ? 0.85 : 0.7) * brightness * p.fade;
+      ctx.beginPath(); ctx.arc(p.x, p.y, insideWallNow || p.fading ? radius * 0.75 : radius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255,176,32,${a})`; ctx.fill();
     }
     requestAnimationFrame(frame);
@@ -1296,6 +1372,133 @@ function initSleepSweep(canvasId) {
   requestAnimationFrame(frame);
 }
 
+function initValidationSweep(leftId, rightId) {
+  const leftCanvas = document.getElementById(leftId);
+  const rightCanvas = document.getElementById(rightId);
+  if (!leftCanvas || !rightCanvas) return;
+  const lctx = leftCanvas.getContext("2d");
+  const rctx = rightCanvas.getContext("2d");
+  let lw, lh, rw, rh;
+  function resize() {
+    lw = leftCanvas.width = leftCanvas.offsetWidth; lh = leftCanvas.height = leftCanvas.offsetHeight;
+    rw = rightCanvas.width = rightCanvas.offsetWidth; rh = rightCanvas.height = rightCanvas.offsetHeight;
+  }
+  window.addEventListener("resize", resize);
+  const slideEl = leftCanvas.closest(".slide");
+  if (slideEl) slideEl.addEventListener("slide-enter", resize);
+  resize();
+
+  // 실측: 2026-07-25 취침, SHT31 센서, 1분 간격 674개 샘플 (그대로 재생)
+  const REAL_TEMPS = [29.1,29.2,29.3,29.3,29.2,29.0,28.9,28.6,28.3,28.1,28.0,27.8,27.6,27.3,27.1,26.9,26.7,26.5,26.4,26.3,26.1,26.0,25.8,25.7,25.6,25.5,25.4,25.4,25.3,25.3,25.3,25.4,25.6,25.7,25.7,25.6,25.5,25.4,25.3,25.1,24.9,24.9,25.1,25.3,25.4,25.6,25.6,25.7,25.6,25.4,25.3,25.1,24.9,24.9,25.0,25.1,25.2,25.3,25.4,25.4,25.4,25.3,25.1,25.0,24.8,24.8,24.9,25.0,25.1,25.2,25.1,25.0,24.9,24.8,24.7,24.8,24.9,25.0,25.1,25.2,25.2,25.1,24.9,24.8,24.7,24.7,24.8,24.9,25.0,25.1,25.0,24.9,24.8,24.7,24.6,24.6,24.8,24.9,24.9,24.9,24.8,24.6,24.6,24.6,24.6,24.7,24.8,24.9,25.0,25.1,25.2,25.3,25.3,25.3,25.1,24.9,24.8,24.8,24.8,24.9,24.9,25.1,25.0,24.9,24.8,24.6,24.5,24.6,24.7,24.8,24.9,24.9,25.1,25.1,25.1,24.9,24.9,24.6,24.4,24.4,24.4,24.6,24.7,24.8,24.9,24.9,24.8,24.6,24.4,24.3,24.4,24.5,24.6,24.7,24.8,24.9,24.9,24.8,24.6,24.5,24.3,24.4,24.4,24.4,24.6,24.7,24.8,24.8,24.9,25.0,25.1,25.1,25.1,25.0,24.9,24.6,24.6,24.6,24.6,24.7,24.8,24.9,24.9,25.0,24.9,24.8,24.6,24.4,24.4,24.4,24.5,24.6,24.7,24.8,24.8,24.7,24.6,24.4,24.3,24.3,24.3,24.4,24.5,24.6,24.7,24.8,24.9,24.9,25.0,24.9,24.8,24.6,24.5,24.4,24.5,24.6,24.7,24.8,24.8,24.9,24.9,24.9,24.8,24.6,24.4,24.4,24.5,24.5,24.6,24.7,24.8,24.8,24.8,24.6,24.5,24.3,24.1,24.0,24.0,24.1,24.3,24.3,24.4,24.5,24.4,24.3,24.1,23.9,23.9,24.0,24.1,24.2,24.3,24.4,24.5,24.6,24.7,24.8,24.8,24.6,24.5,24.3,24.3,24.3,24.3,24.4,24.5,24.6,24.6,24.8,24.8,24.9,24.9,24.8,24.6,24.4,24.3,24.1,24.1,24.3,24.3,24.4,24.4,24.5,24.6,24.7,24.8,24.9,24.9,24.9,24.9,24.8,24.6,24.4,24.3,24.3,24.4,24.4,24.5,24.6,24.7,24.8,24.8,24.9,24.9,25.0,25.1,25.1,24.9,24.8,24.5,24.4,24.3,24.3,24.4,24.5,24.6,24.6,24.8,24.7,24.6,24.5,24.3,24.3,24.3,24.4,24.4,24.5,24.6,24.6,24.4,24.3,24.2,24.2,24.3,24.3,24.4,24.4,24.6,24.6,24.8,24.8,24.9,24.9,24.9,24.9,24.8,24.6,24.4,24.3,24.3,24.4,24.4,24.5,24.6,24.6,24.6,24.5,24.3,24.2,24.1,24.2,24.3,24.3,24.4,24.5,24.6,24.7,24.8,24.7,24.5,24.3,24.3,24.3,24.3,24.4,24.5,24.6,24.7,24.8,24.9,24.9,24.9,24.7,24.5,24.4,24.3,24.4,24.4,24.6,24.6,24.7,24.8,24.9,24.9,24.9,24.8,24.6,24.3,24.3,24.4,24.4,24.5,24.6,24.7,24.8,24.6,24.5,24.4,24.3,24.3,24.3,24.4,24.5,24.6,24.7,24.8,24.8,24.9,25.0,25.0,24.9,24.8,24.6,24.5,24.4,24.4,24.6,24.6,24.7,24.8,24.8,24.9,25.0,25.1,25.0,24.8,24.7,24.5,24.4,24.4,24.4,24.5,24.6,24.6,24.8,24.9,24.9,24.8,24.6,24.4,24.3,24.3,24.3,24.4,24.5,24.6,24.8,24.8,24.9,24.9,24.7,24.6,24.4,24.3,24.4,24.5,24.6,24.6,24.8,24.8,24.9,25.0,25.0,24.9,24.7,24.6,24.5,24.5,24.6,24.6,24.7,24.8,24.9,25.0,25.0,25.1,24.9,24.8,24.6,24.5,24.4,24.4,24.4,24.5,24.6,24.8,24.8,24.6,24.5,24.4,24.3,24.3,24.4,24.4,24.6,24.7,24.7,24.6,24.5,24.4,24.2,24.2,24.3,24.4,24.4,24.6,24.7,24.6,24.6,24.5,24.3,24.3,24.2,24.2,24.3,24.4,24.5,24.6,24.7,24.8,24.9,24.8,24.7,24.6,24.5,24.3,24.3,24.1,24.1,24.1,24.3,24.3,24.4,24.5,24.6,24.5,24.4,24.2,24.1,24.1,24.1,24.3,24.3,24.4,24.5,24.6,24.7,24.8,24.8,24.6,24.5,24.4,24.3,24.2,24.2,24.3,24.4,24.5,24.6,24.6,24.4,24.4,24.2,24.1,24.1,24.2,24.3,24.4,24.5,24.6,24.6,24.6,24.4,24.3,24.3,24.1,24.2,24.3,24.4,24.4,24.5,24.6,24.8,24.8,24.8,24.7,24.6,24.4,24.3,24.3,24.2,24.3,24.4,24.5,24.6,24.7,24.8,24.8,24.9,24.9,24.9,24.8,24.7,24.5,24.4,24.3,24.3,24.4,24.4,24.5,24.6,24.7,24.7,24.6,24.5,24.4,24.3,24.3,24.3,24.4,24.5,24.6,24.6,24.6,24.6,24.4,24.4,24.3,24.2,24.3,24.3,24.4,24.4,24.6,24.6,24.6,24.5,24.3,24.2,24.2,24.2,24.3,24.4,24.4,24.6,24.6,24.8,24.8,24.9,24.9,24.9,24.8,24.6,24.4,24.4,24.3,24.1,24.1,24.3,24.3,24.4,24.5,24.8];
+  const TOTAL_MIN = REAL_TEMPS.length - 1;
+
+  // 시뮬레이션: 제공된 실측 기반 비교 그래프(동일 밤 실측 습도 반영, EcoBreeze 넓은 쾌적대 로직)의
+  // 결과 곡선을 그대로 옮긴 값 — 1분 간격 674개 샘플
+  const SIM_TEMPS = [29.11,29.15,29.21,29.27,29.32,29.34,29.34,29.33,29.27,29.21,29.13,29.06,28.99,28.91,28.84,28.77,28.7,28.63,28.56,28.48,28.41,28.34,28.27,28.2,28.12,28.05,27.98,27.91,27.84,27.76,27.69,27.62,27.55,27.47,27.41,27.33,27.26,27.19,27.11,27.04,26.97,26.9,26.83,26.76,26.68,26.61,26.54,26.46,26.4,26.32,26.25,26.18,26.11,26.04,25.96,25.89,25.82,25.75,25.67,25.6,25.53,25.46,25.39,25.31,25.25,25.17,25.1,25.03,24.95,24.88,24.83,24.86,24.92,24.98,25.03,25.1,25.16,25.22,25.28,25.34,25.4,25.46,25.52,25.58,25.64,25.7,25.76,25.82,25.88,25.94,26.0,26.06,26.12,26.18,26.24,26.3,26.36,26.41,26.42,26.42,26.41,26.36,26.28,26.22,26.14,26.07,26.0,25.92,25.86,25.78,25.71,25.64,25.56,25.49,25.42,25.35,25.28,25.21,25.13,25.06,24.99,24.91,24.85,24.79,24.83,24.88,24.94,25.0,25.06,25.12,25.18,25.25,25.3,25.37,25.42,25.49,25.54,25.61,25.66,25.72,25.78,25.84,25.9,25.96,26.02,26.08,26.15,26.2,26.27,26.32,26.39,26.44,26.51,26.55,26.56,26.56,26.55,26.5,26.42,26.35,26.28,26.21,26.14,26.07,26.0,25.92,25.85,25.78,25.71,25.63,25.56,25.49,25.41,25.35,25.27,25.2,25.13,25.06,24.99,24.91,24.84,24.77,24.72,24.75,24.82,24.87,24.94,24.99,25.06,25.11,25.17,25.23,25.29,25.35,25.41,25.47,25.53,25.59,25.65,25.72,25.77,25.84,25.89,25.96,26.01,26.07,26.13,26.19,26.25,26.31,26.37,26.43,26.5,26.55,26.62,26.67,26.73,26.74,26.74,26.72,26.66,26.59,26.52,26.44,26.38,26.3,26.23,26.16,26.09,26.02,25.94,25.87,25.8,25.73,25.65,25.59,25.51,25.44,25.37,25.29,25.22,25.15,25.08,25.03,25.07,25.13,25.19,25.25,25.31,25.37,25.42,25.49,25.54,25.61,25.66,25.73,25.79,25.85,25.91,25.97,26.03,26.09,26.15,26.2,26.27,26.32,26.39,26.44,26.51,26.57,26.63,26.69,26.75,26.81,26.87,26.93,26.99,27.05,27.09,27.1,27.1,27.09,27.03,26.96,26.89,26.82,26.75,26.67,26.61,26.53,26.46,26.39,26.31,26.24,26.17,26.1,26.02,25.95,25.88,25.81,25.74,25.67,25.59,25.52,25.45,25.38,25.3,25.23,25.19,25.22,25.29,25.34,25.41,25.46,25.53,25.58,25.65,25.7,25.76,25.83,25.88,25.95,26.0,26.07,26.12,26.19,26.24,26.31,26.37,26.43,26.49,26.54,26.61,26.66,26.73,26.78,26.85,26.9,26.95,26.96,26.96,26.94,26.89,26.81,26.74,26.67,26.6,26.53,26.46,26.38,26.31,26.24,26.16,26.1,26.02,25.95,25.88,25.8,25.74,25.66,25.59,25.52,25.45,25.37,25.3,25.23,25.16,25.11,25.15,25.21,25.28,25.33,25.4,25.45,25.52,25.57,25.64,25.69,25.76,25.82,25.88,25.94,25.99,26.06,26.11,26.18,26.23,26.3,26.35,26.42,26.47,26.54,26.59,26.66,26.72,26.78,26.84,26.89,26.96,27.01,27.08,27.12,27.13,27.13,27.11,27.05,26.98,26.91,26.83,26.77,26.69,26.62,26.55,26.48,26.4,26.33,26.26,26.19,26.12,26.04,25.98,25.9,25.83,25.76,25.68,25.61,25.54,25.47,25.4,25.33,25.25,25.18,25.11,25.07,25.11,25.17,25.23,25.29,25.35,25.41,25.47,25.53,25.59,25.65,25.71,25.77,25.83,25.89,25.95,26.01,26.07,26.13,26.19,26.25,26.31,26.37,26.43,26.49,26.55,26.61,26.67,26.73,26.79,26.85,26.91,26.97,27.01,27.02,27.02,27.0,26.94,26.87,26.8,26.73,26.66,26.58,26.51,26.44,26.37,26.3,26.22,26.15,26.08,26.01,25.93,25.86,25.79,25.72,25.65,25.57,25.5,25.43,25.36,25.29,25.21,25.17,25.22,25.28,25.34,25.4,25.46,25.52,25.58,25.64,25.7,25.76,25.82,25.88,25.94,26.0,26.06,26.12,26.18,26.24,26.3,26.36,26.42,26.48,26.54,26.6,26.66,26.72,26.78,26.84,26.9,26.96,27.02,27.06,27.07,27.07,27.05,26.99,26.91,26.85,26.77,26.7,26.63,26.55,26.49,26.41,26.34,26.27,26.19,26.12,26.05,25.98,25.91,25.84,25.76,25.69,25.62,25.55,25.48,25.4,25.33,25.26,25.19,25.15,25.19,25.26,25.31,25.38,25.44,25.5,25.56,25.62,25.68,25.74,25.8,25.85,25.92,25.98,26.04,26.09,26.16,26.22,26.28,26.34,26.4,26.46,26.52,26.58,26.64,26.7,26.75,26.82,26.87,26.94,27.0,27.04,27.04,27.04,27.02,26.96,26.89,26.82,26.74,26.68,26.6,26.53,26.46,26.39,26.31,26.24,26.17,26.1,26.03,25.95,25.88,25.81,25.73,25.67,25.59,25.52,25.49,25.54,25.59,25.66,25.71,25.78,25.83,25.9,25.95,26.02,26.08,26.14,26.2,26.25,26.32,26.37,26.44,26.49,26.56,26.61,26.68,26.73,26.8,26.86,26.92,26.98,27.03,27.07,27.08,27.08,27.06,27.0,26.92,26.85,26.78,26.71,26.64,26.56,26.49,26.42,26.35,26.28,26.2,26.13,26.06,25.99,25.92,25.84,25.77,25.7,25.63,25.6,25.65,25.7,25.76,25.83,25.88,25.95,26.0,26.05];
+  // 위 곡선에서 실제로 검출되는 재가동 저점(lo)·고점(hi) 지점 — 쾌적대가 취침 초반엔 더 낮게
+  // 시작해 시간이 지나며 서서히 올라가는 모양을 그대로 반영
+  const LO_KEYS = [[70,24.83],[123,24.79],[182,24.72],[243,25.03],[308,25.19],[367,25.11],[433,25.07],[495,25.17],[557,25.15],[614,25.49],[665,25.6]];
+  const HI_KEYS = [[99,26.42],[155,26.56],[218,26.74],[280,27.1],[340,26.96],[403,27.13],[468,27.02],[529,27.07],[591,27.04],[643,27.08]];
+  function envelopeAt(keys, m) {
+    if (m <= keys[0][0]) return keys[0][1];
+    if (m >= keys[keys.length - 1][0]) return keys[keys.length - 1][1];
+    for (let i = 0; i < keys.length - 1; i++) {
+      const [m0, v0] = keys[i], [m1, v1] = keys[i + 1];
+      if (m >= m0 && m <= m1) return v0 + (v1 - v0) * (m - m0) / (m1 - m0);
+    }
+    return keys[keys.length - 1][1];
+  }
+  const sim = { trace: SIM_TEMPS, cycles: LO_KEYS.length };
+
+  function countRealCycles() {
+    let cycles = 0, dir = null, lastExtreme = REAL_TEMPS[0];
+    for (let i = 1; i < REAL_TEMPS.length; i++) {
+      const d = REAL_TEMPS[i] - REAL_TEMPS[i - 1];
+      const nd = d > 0 ? "up" : d < 0 ? "down" : dir;
+      if (dir === "down" && nd === "up" && Math.abs(REAL_TEMPS[i - 1] - lastExtreme) >= 0.15) {
+        cycles++; lastExtreme = REAL_TEMPS[i - 1];
+      } else if (nd !== dir) {
+        lastExtreme = REAL_TEMPS[i - 1];
+      }
+      dir = nd;
+    }
+    return cycles;
+  }
+  const realCycles = countRealCycles();
+
+  const DISPLAY_MIN = 23.5, DISPLAY_MAX = 29.6;
+  const SWEEP_SEC = 22; // 전체 취침 구간(약 674분)을 약 22초에 순회
+  let sweep = 0, last = performance.now();
+  const leftLabel = document.getElementById("valid-real-readout");
+  const rightLabel = document.getElementById("valid-sim-readout");
+
+  function drawPanel(ctx, w, h, trace, color, showBand, t) {
+    const x0 = w * 0.1, x1 = w * 0.97, y0 = h * 0.86, y1 = h * 0.1;
+    const xAt = (m) => x0 + (m / TOTAL_MIN) * (x1 - x0);
+    const yAt = (v) => y0 - ((v - DISPLAY_MIN) / (DISPLAY_MAX - DISPLAY_MIN)) * (y0 - y1);
+
+    ctx.fillStyle = "#070b12"; ctx.fillRect(0, 0, w, h);
+
+    if (showBand) {
+      ctx.beginPath();
+      for (let m = 0; m <= TOTAL_MIN; m++) { const x = xAt(m), y = yAt(envelopeAt(HI_KEYS, m)); m === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      for (let m = TOTAL_MIN; m >= 0; m--) { const x = xAt(m), y = yAt(envelopeAt(LO_KEYS, m)); ctx.lineTo(x, y); }
+      ctx.closePath();
+      ctx.fillStyle = "rgba(34,211,238,0.08)"; ctx.fill();
+      ctx.strokeStyle = "rgba(34,211,238,0.3)"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let m = 0; m <= TOTAL_MIN; m++) { const x = xAt(m), y = yAt(envelopeAt(HI_KEYS, m)); m === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let m = 0; m <= TOTAL_MIN; m++) { const x = xAt(m), y = yAt(envelopeAt(LO_KEYS, m)); m === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.stroke();
+
+    ctx.beginPath();
+    for (let m = 0; m <= TOTAL_MIN; m++) {
+      const x = xAt(m), y = yAt(trace[m]);
+      m === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.32; ctx.stroke(); ctx.globalAlpha = 1;
+
+    const curM = Math.min(t, TOTAL_MIN);
+    ctx.beginPath();
+    for (let m = 0; m <= curM; m++) {
+      const x = xAt(m), y = yAt(trace[m]);
+      m === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 2.4; ctx.stroke();
+
+    const cx = xAt(curM), cy = yAt(trace[Math.floor(curM)]);
+    ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "10px Pretendard";
+    ctx.fillText("0분", x0, y0 + 16);
+    ctx.fillText(TOTAL_MIN + "분", x1 - 28, y0 + 16);
+  }
+
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.1); last = now;
+    if (!isActive(leftCanvas)) { requestAnimationFrame(frame); return; }
+    sweep = (sweep + dt * (TOTAL_MIN / SWEEP_SEC)) % TOTAL_MIN;
+    const t = sweep;
+
+    drawPanel(lctx, lw, lh, REAL_TEMPS, "#ff4d6d", false, t);
+    drawPanel(rctx, rw, rh, sim.trace, "#22d3ee", true, t);
+
+    const floorT = Math.floor(t);
+    if (leftLabel) leftLabel.textContent = floorT + "분 경과 · " + REAL_TEMPS[floorT].toFixed(1) + "°C · 실측 재가동 약 " + realCycles + "회";
+    if (rightLabel) rightLabel.textContent = floorT + "분 경과 · " + sim.trace[floorT].toFixed(1) + "°C · 시뮬레이션 재가동 " + sim.cycles + "회";
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
 /* ================= 장식용 배경 (수치 없는 슬라이드 전용) ================= */
 function initParticleField(canvasId, { count = 70, color = "#22d3ee", connect = true, speed = 0.35 } = {}) {
   const canvas = document.getElementById(canvasId);
@@ -1385,8 +1588,8 @@ window.addEventListener("DOMContentLoaded", () => {
   initParticleField("effects-canvas", { count: 50, color: "#4fd8ff", connect: false });
 
   let cN = 0, cW = 0;
-  initBandControl("compare-narrow", { fullscreen: false, lo: 24.8, hi: 25.2, rangeLo: 24.5, rangeHi: 25.5, minHoldSec: 0.3, warn: true, trailSpeed: 0.005, onCycle: () => { cN++; document.getElementById("counter-narrow").textContent = "재가동 " + cN + "회"; } });
-  initBandControl("compare-wide", { fullscreen: false, lo: 24, hi: 26, rangeLo: 23, rangeHi: 27, minHoldSec: 5, startupDelaySec: 3, showWaste: true, trailSpeed: 0.0012, onCycle: () => { cW++; document.getElementById("counter-wide").textContent = "재가동 " + cW + "회"; } });
+  initBandControl("compare-narrow", { fullscreen: false, lo: 24.8, hi: 25.2, rangeLo: 24.5, rangeHi: 25.5, minHoldSec: 0.3, startupDelaySec: 0, warn: true, trailSpeed: 0.006, onCycle: () => { cN++; document.getElementById("counter-narrow").textContent = "재가동 " + cN + "회"; } });
+  initBandControl("compare-wide", { fullscreen: false, lo: 24, hi: 26, rangeLo: 23, rangeHi: 27, minHoldSec: 5, startupDelaySec: 0, trailSpeed: 0.006, onCycle: () => { cW++; document.getElementById("counter-wide").textContent = "재가동 " + cW + "회"; } });
 
   initChainFlow("remote-canvas", {
     nodes: [{ id: "phone", x: .12, y: .5 }, { id: "ctrl", x: .5, y: .5 }, { id: "ac", x: .88, y: .5 }],
@@ -1424,6 +1627,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initWallFlux("wallflux-canvas");
   initWasteCompare("waste-canvas");
+  initValidationSweep("valid-real-canvas", "valid-sim-canvas");
 
   initBandControl("closing-canvas", { fullscreen: true, lo: 24, hi: 26, minHoldSec: 5, startupDelaySec: 3, flashId: "flash-closing", shakeOnFlip: true });
 
