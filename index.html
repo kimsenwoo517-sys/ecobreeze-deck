@@ -401,7 +401,7 @@
       </div>
       <div class="mini-canvas-wrap">
         <canvas id="waste-canvas"></canvas>
-        <div class="mini-label" style="color:var(--warm);">무효 냉방구간 감소 (τ≈3분)</div>
+        <div class="mini-label" style="color:var(--warm);">무효 냉방구간 감소 — 좁은 밴드 vs EcoBreeze</div>
       </div>
     </div>
     <div class="cap" data-anim>
@@ -682,7 +682,7 @@ function initBandControl(canvasId, opts = {}) {
     } else {
       temp += driftRate * simMin;
       if (temp >= hi - hystMargin && holdTimer >= minHoldSec) {
-        on = true; holdTimer = 0; wasteTimer = startupDelaySec; cycles++; if (onCycle) onCycle(cycles, on);
+        on = true; holdTimer = 0; wasteTimer = startupDelaySec * timeScale; cycles++; if (onCycle) onCycle(cycles, on);
         impactX = w * 0.86; impactY = tempToY(temp); impactT = 0;
         spawnBurstParticles(debris, impactX, impactY, { count: 14, speed: 34 });
         if (flashId) triggerFlash(document.getElementById(flashId));
@@ -945,6 +945,9 @@ function initWallFlux(canvasId) {
   const labelIndoor = document.getElementById("wallflux-indoor");
   const labelDelta = document.getElementById("wallflux-delta");
 
+  // 단면도 시선: 왼쪽=외기, 가운데 두꺼운 밴드=벽(단열재), 오른쪽=실내.
+  // 열 입자는 항상 외기(왼쪽 바깥)에서 출발해 벽을 관통해 실내로 침투하며,
+  // 벽을 지나는 동안엔 단열재의 저항을 표현하기 위해 속도·불투명도를 낮춘다.
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (!isActive(canvas)) { requestAnimationFrame(frame); return; }
@@ -954,26 +957,60 @@ function initWallFlux(canvasId) {
     if (labelIndoor) labelIndoor.textContent = indoorT.toFixed(1) + "°C";
     if (labelDelta) labelDelta.textContent = deltaT.toFixed(1) + "°C";
 
-    if (Math.random() * 60 < deltaT * 0.9) particles.push({ x: w * 0.5, y: Math.random() * h, vx: 30 + deltaT * 6, life: 1 });
+    const wallX0 = w * 0.44, wallX1 = w * 0.56;
 
-    ctx.fillStyle = "rgba(7,11,18,0.25)"; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(255,120,60,0.07)"; ctx.fillRect(0, 0, w * 0.5, h);
-    ctx.fillStyle = "rgba(34,211,238,0.07)"; ctx.fillRect(w * 0.5, 0, w * 0.5, h);
-    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.beginPath(); ctx.moveTo(w * 0.5, 0); ctx.lineTo(w * 0.5, h); ctx.stroke();
+    if (Math.random() * 60 < deltaT * 1.1) {
+      particles.push({ x: -4, y: h * 0.18 + Math.random() * h * 0.64, vx: 26 + deltaT * 5 });
+    }
+
+    ctx.fillStyle = "rgba(7,11,18,0.3)"; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(255,120,60,0.08)"; ctx.fillRect(0, 0, wallX0, h);
+    ctx.fillStyle = "rgba(34,211,238,0.08)"; ctx.fillRect(wallX1, 0, w - wallX1, h);
+
+    // 벽 단면 (해칭 텍스처)
+    ctx.save();
+    ctx.beginPath(); ctx.rect(wallX0, 0, wallX1 - wallX0, h); ctx.clip();
+    ctx.fillStyle = "#2b241d"; ctx.fillRect(wallX0, 0, wallX1 - wallX0, h);
+    ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 1;
+    for (let hx = wallX0 - h; hx < wallX1 + h; hx += 13) {
+      ctx.beginPath(); ctx.moveTo(hx, 0); ctx.lineTo(hx + h, h); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath(); ctx.moveTo(wallX0, 0); ctx.lineTo(wallX0, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(wallX1, 0); ctx.lineTo(wallX1, h); ctx.stroke();
+
+    ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "11px Pretendard";
+    ctx.fillText("외기 " + outdoorT.toFixed(1) + "°C", 8, 42);
+    ctx.fillText("실내", w - 34, 42);
+    ctx.save();
+    ctx.translate((wallX0 + wallX1) / 2, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "11px Pretendard";
+    ctx.fillText("벽(단열)", 0, 4);
+    ctx.restore();
 
     for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i]; p.x += p.vx * dt; p.life -= dt * 0.4;
-      if (p.life <= 0 || p.x > w) { particles.splice(i, 1); continue; }
+      const p = particles[i];
+      const insideWall = p.x >= wallX0 && p.x <= wallX1;
+      p.x += p.vx * (insideWall ? 0.35 : 1) * dt;
+      // 목숨(life)을 시간으로 깎지 않고 화면을 완전히 빠져나갈 때만 제거 —
+      // 그래야 외기→벽→실내까지 실제로 끝까지 이동하는 게 보인다.
+      if (p.x > w + 5) { particles.splice(i, 1); continue; }
+      const a = insideWall ? 0.4 : 0.85;
       ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,176,32,${p.life})`; ctx.fill();
+      ctx.fillStyle = `rgba(255,176,32,${a})`; ctx.fill();
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 }
 
-/* ================= 무효 냉방구간(τ) 타임라인 ================= */
-function initWasteTimeline(canvasId) {
+/* ================= 무효 냉방구간(τ) 비교 — 좁은 밴드 vs EcoBreeze, 실제 히스테리시스 물리 재사용 =================
+   위쪽 레인(일반 에어컨)과 아래쪽 레인(EcoBreeze)이 같은 시간축 위에서 각자 실제 on/off 물리로 돌아간다.
+   기동할 때마다 τ(무효 냉방구간)를 주황, 그 뒤 실제 냉방을 청록으로 그려 나가는 간트차트라서,
+   재가동이 잦은 레인일수록 주황 블록이 촘촘하게 쌓이는 걸 그대로 볼 수 있다. */
+function initWasteCompare(canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -984,28 +1021,65 @@ function initWasteTimeline(canvasId) {
   if (slideEl) slideEl.addEventListener("slide-enter", resize);
   resize();
 
-  let x = 0, last = performance.now();
-  const events = [];
+  const driftRate = 0.06, coolRate = 0.0722; // 실측 물리량 그대로 재사용
+  function makeLane(opts) { return Object.assign({ temp: (opts.lo + opts.hi) / 2, on: false, holdTimer: 999, wasteTimer: 0, history: [], wasteTime: 0, totalTime: 0 }, opts); }
+  const narrow = makeLane({ lo: 24.8, hi: 25.2, hystMargin: 0.1, minHoldSec: 0.3, startupDelaySec: 3, timeScale: 0.5, label: "일반 에어컨(좁은 밴드)" });
+  const wide = makeLane({ lo: 24, hi: 26, hystMargin: 0.1, minHoldSec: 5, startupDelaySec: 3, timeScale: 0.5, label: "EcoBreeze(넓은 밴드)" });
+
+  const PXPS = 22;
+  let last = performance.now();
+
+  function stepLane(lane, dt) {
+    lane.holdTimer += dt;
+    if (lane.wasteTimer > 0) lane.wasteTimer -= dt;
+    const effCool = lane.wasteTimer > 0 ? coolRate * 0.12 : coolRate;
+    const simMin = dt / lane.timeScale;
+    if (lane.on) {
+      lane.temp -= effCool * simMin;
+      if (lane.temp <= lane.lo + lane.hystMargin && lane.holdTimer >= lane.minHoldSec) { lane.on = false; lane.holdTimer = 0; }
+    } else {
+      lane.temp += driftRate * simMin;
+      if (lane.temp >= lane.hi - lane.hystMargin && lane.holdTimer >= lane.minHoldSec) { lane.on = true; lane.holdTimer = 0; lane.wasteTimer = lane.startupDelaySec * lane.timeScale; }
+    }
+    const state = lane.on ? (lane.wasteTimer > 0 ? "waste" : "cool") : "off";
+    lane.totalTime += dt;
+    if (state === "waste") lane.wasteTime += dt;
+    lane.history.push({ age: 0, state });
+    lane.history.forEach(p => p.age += dt);
+    const maxAge = w / PXPS;
+    while (lane.history.length && lane.history[0].age > maxAge) lane.history.shift();
+  }
+
+  function drawLane(lane, y0, laneH) {
+    ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = "11px Pretendard"; ctx.textAlign = "left";
+    ctx.fillText(lane.label, 6, y0 - 6);
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.beginPath(); ctx.moveTo(0, y0 + laneH / 2); ctx.lineTo(w, y0 + laneH / 2); ctx.stroke();
+    lane.history.forEach(p => {
+      if (p.state === "off") return;
+      const x = w - p.age * PXPS;
+      ctx.fillStyle = p.state === "waste" ? "rgba(255,176,32,0.85)" : "rgba(34,211,238,0.7)";
+      ctx.fillRect(x, y0, 3, laneH);
+    });
+    const pct = lane.totalTime > 0 ? (lane.wasteTime / lane.totalTime) * 100 : 0;
+    ctx.fillStyle = "rgba(255,176,32,0.9)"; ctx.font = "12px Pretendard"; ctx.textAlign = "right";
+    ctx.fillText(`무효구간 누적 ${pct.toFixed(1)}%`, w - 6, y0 - 6);
+    ctx.textAlign = "left";
+  }
+
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (!isActive(canvas)) { requestAnimationFrame(frame); return; }
-    x += dt * (w * 0.06);
-    if (x > w) { x = 0; events.length = 0; }
-    if (Math.random() < 0.01) events.push({ x, wasted: true });
+    stepLane(narrow, dt);
+    stepLane(wide, dt);
 
     ctx.fillStyle = "#070b12"; ctx.fillRect(0, 0, w, h);
-    const midY = h * 0.55;
-    ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
-    events.forEach(ev => {
-      ctx.fillStyle = "rgba(255,176,32,0.35)";
-      ctx.fillRect(ev.x, midY - 18, w * 0.05, 36);
-      ctx.fillStyle = "rgba(34,211,238,0.25)";
-      ctx.fillRect(ev.x + w * 0.05, midY - 10, w * 0.02, 20);
-    });
-    ctx.beginPath(); ctx.moveTo(x, midY - 24); ctx.lineTo(x, midY + 24);
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = "var(--muted)"; ctx.fillStyle = "#93a4b8"; ctx.font = "11px Pretendard";
-    ctx.fillText("주황 = τ 무효 냉방구간, 청록 = 실효 냉방", 10, h - 10);
+    drawLane(narrow, h * 0.26, h * 0.16);
+    drawLane(wide, h * 0.66, h * 0.16);
+
+    ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = "10px Pretendard";
+    ctx.fillText("주황 = τ 무효 냉방구간(전력만 소모) · 청록 = 실효 냉방 · 빈 칸 = 컴프레서 정지", 6, h - 10);
+
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -1349,7 +1423,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initBandControl("hyst-canvas", { fullscreen: true, lo: 24, hi: 26, minHoldSec: 5, startupDelaySec: 3, showWaste: true, flashId: "flash-hyst", shakeOnFlip: false });
 
   initWallFlux("wallflux-canvas");
-  initWasteTimeline("waste-canvas");
+  initWasteCompare("waste-canvas");
 
   initBandControl("closing-canvas", { fullscreen: true, lo: 24, hi: 26, minHoldSec: 5, startupDelaySec: 3, flashId: "flash-closing", shakeOnFlip: true });
 
