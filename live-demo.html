@@ -53,6 +53,61 @@
     line-height: 1;
   }
   #login-frame { flex: 1; border: 0; width: 100%; background: #fff; }
+
+  #qr-panel {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    width: 260px;
+    background: #0b0f14;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+    overflow: hidden;
+    transition: transform .2s ease;
+    z-index: 10;
+  }
+  #qr-panel.collapsed #qr-body { display: none; }
+  #qr-head {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    background: rgba(255,255,255,.06);
+    color: #cfe8ff;
+    font: 700 12px/1 -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .02em;
+    cursor: move;
+    user-select: none;
+  }
+  #qr-toggle {
+    border: 0;
+    background: transparent;
+    color: #cfe8ff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 6px;
+    line-height: 1;
+  }
+  #qr-body { padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #qr-body .hint { color: rgba(255,255,255,.55); font: 500 11.5px/1.4 -apple-system, "Segoe UI", sans-serif; text-align: center; }
+  #roomCodeInput {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 10px;
+    color: #fff;
+    padding: 10px 12px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+  #roomQrImg { width: 150px; height: 150px; border-radius: 10px; background: #fff; padding: 6px; display: none; }
+  #roomQrLink { color: rgba(255,255,255,.55); font-size: 10.5px; word-break: break-all; text-align: center; display: none; }
 </style>
 </head>
 <body>
@@ -67,30 +122,69 @@
   <iframe id="login-frame" src="https://eco-breeze.vercel.app/login.html"></iframe>
 </div>
 
+<div id="qr-panel">
+  <div id="qr-head">
+    <span>🔳 QR 생성 실패 시 대체 (ROOM 코드)</span>
+    <button id="qr-toggle" title="접기/펼치기">─</button>
+  </div>
+  <div id="qr-body">
+    <div class="hint">릴레이 화면의 ROOM 코드를 입력하면 스캔용 QR을 대신 만들어줍니다.</div>
+    <input id="roomCodeInput" type="text" placeholder="ROOM 코드 입력" maxlength="8">
+    <img id="roomQrImg" alt="방 코드 QR">
+    <span id="roomQrLink"></span>
+  </div>
+</div>
+
 <script>
-  const panel = document.getElementById("login-panel");
-  const head = document.getElementById("login-head");
-  const toggleBtn = document.getElementById("login-toggle");
+  function makeDraggablePanel(panel, head, toggleBtn) {
+    toggleBtn.addEventListener("click", () => panel.classList.toggle("collapsed"));
+    let dragging = false, offX = 0, offY = 0;
+    head.addEventListener("mousedown", (e) => {
+      if (e.target === toggleBtn) return;
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      offX = e.clientX - rect.left;
+      offY = e.clientY - rect.top;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      panel.style.top = rect.top + "px";
+      panel.style.left = rect.left + "px";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offX)) + "px";
+      panel.style.top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - offY)) + "px";
+    });
+    window.addEventListener("mouseup", () => { dragging = false; });
+  }
 
-  toggleBtn.addEventListener("click", () => panel.classList.toggle("collapsed"));
+  makeDraggablePanel(
+    document.getElementById("login-panel"),
+    document.getElementById("login-head"),
+    document.getElementById("login-toggle")
+  );
+  makeDraggablePanel(
+    document.getElementById("qr-panel"),
+    document.getElementById("qr-head"),
+    document.getElementById("qr-toggle")
+  );
 
-  // simple drag-to-reposition on the header
-  let dragging = false, offX = 0, offY = 0;
-  head.addEventListener("mousedown", (e) => {
-    if (e.target === toggleBtn) return;
-    dragging = true;
-    const rect = panel.getBoundingClientRect();
-    offX = e.clientX - rect.left;
-    offY = e.clientY - rect.top;
-    panel.style.right = "auto";
-    panel.style.bottom = "auto";
+  const roomInput = document.getElementById("roomCodeInput");
+  const roomQrImg = document.getElementById("roomQrImg");
+  const roomQrLink = document.getElementById("roomQrLink");
+  roomInput.addEventListener("input", () => {
+    const code = roomInput.value.trim().toUpperCase();
+    if (code.length >= 4) {
+      const link = `https://brightwindow.github.io/makerton-live-relay/?role=cast&room=${encodeURIComponent(code)}`;
+      roomQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(link)}`;
+      roomQrImg.style.display = "block";
+      roomQrLink.textContent = link;
+      roomQrLink.style.display = "block";
+    } else {
+      roomQrImg.style.display = "none";
+      roomQrLink.style.display = "none";
+    }
   });
-  window.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offX)) + "px";
-    panel.style.top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - offY)) + "px";
-  });
-  window.addEventListener("mouseup", () => { dragging = false; });
 </script>
 
 </body>
