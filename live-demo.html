@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EcoBreeze — Live Demo</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #05070a; overflow: hidden; }
+  #relay { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+
+  #login-panel {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    width: 360px;
+    height: 620px;
+    max-width: 42vw;
+    max-height: 80vh;
+    background: #0b0f14;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform .2s ease, opacity .2s ease;
+    z-index: 10;
+  }
+  #login-panel.collapsed { transform: translateY(calc(100% - 40px)); }
+
+  #login-head {
+    height: 36px;
+    flex: 0 0 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    background: rgba(255,255,255,.06);
+    color: #cfe8ff;
+    font: 700 12px/1 -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .02em;
+    cursor: move;
+    user-select: none;
+  }
+  #login-head span { opacity: .85; }
+  #login-toggle {
+    border: 0;
+    background: transparent;
+    color: #cfe8ff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 6px;
+    line-height: 1;
+  }
+  #login-frame { flex: 1; border: 0; width: 100%; background: #fff; }
+</style>
+</head>
+<body>
+
+<iframe id="relay" src="https://brightwindow.github.io/makerton-live-relay/" allow="camera; microphone; clipboard-read; clipboard-write" allowfullscreen></iframe>
+
+<div id="login-panel">
+  <div id="login-head">
+    <span>🔗 EcoBreeze 제품 화면 (eco-breeze.vercel.app)</span>
+    <button id="login-toggle" title="접기/펼치기">─</button>
+  </div>
+  <iframe id="login-frame" src="https://eco-breeze.vercel.app/login.html"></iframe>
+</div>
+
+<script>
+  const panel = document.getElementById("login-panel");
+  const head = document.getElementById("login-head");
+  const toggleBtn = document.getElementById("login-toggle");
+
+  toggleBtn.addEventListener("click", () => panel.classList.toggle("collapsed"));
+
+  // simple drag-to-reposition on the header
+  let dragging = false, offX = 0, offY = 0;
+  head.addEventListener("mousedown", (e) => {
+    if (e.target === toggleBtn) return;
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    offX = e.clientX - rect.left;
+    offY = e.clientY - rect.top;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, e.clientX - offX)) + "px";
+    panel.style.top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - offY)) + "px";
+  });
+  window.addEventListener("mouseup", () => { dragging = false; });
+</script>
+
+</body>
+</html>
